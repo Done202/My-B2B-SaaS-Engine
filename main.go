@@ -4,7 +4,11 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/xuri/excelize/v2"
+	"github.com/jung-kurt/gofpdf"
 )
 
 const AdminUser = "admin"
@@ -17,14 +21,13 @@ func main() {
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			if r.FormValue("user") == AdminUser && r.FormValue("pass") == AdminPass {
-				cookie := &http.Cookie{Name: "session", Value: "active", Path: "/"}
-				http.SetCookie(w, cookie)
+				http.SetCookie(w, &http.Cookie{Name: "session", Value: "active", Path: "/"})
 				http.Redirect(w, r, "/", http.StatusSeeOther)
 				return
 			}
 		}
 		fmt.Fprintf(w, `<html><body style="font-family:sans-serif; background:#f0f2f5; display:flex; justify-content:center; align-items:center; height:100vh;">
-			<form method="POST" style="background:white; padding:40px; border-radius:12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width:320px; text-align:center; border: 2px solid #006400;">
+			<form method="POST" style="background:white; padding:40px; border-radius:15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width:320px; text-align:center; border: 2px solid #006400;">
 				<h2 style="background: linear-gradient(45deg, #006400, #1a73e8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 30px;">Admin Login</h2>
 				<input type="text" name="user" placeholder="Username" style="width:100%%; padding:12px; margin:10px 0; border:2px solid #ddd; border-radius:6px;" required><br>
 				<input type="password" name="pass" placeholder="Password" style="width:100%%; padding:12px; margin:10px 0; border:2px solid #ddd; border-radius:6px;" required><br>
@@ -57,9 +60,62 @@ func main() {
 			return
 		}
 
+		// Excel & PDF Export Logic with Filtering
 		if action == "export_excel" || action == "export_pdf" {
-			w.Header().Set("Content-Disposition", "attachment; filename=Report.txt")
-			fmt.Fprintf(w, "Selection: %s\nReport generation in progress...", selection)
+			rows, _ := db.Query("SELECT name, phone, email, remarks FROM customers WHERE deleted = 0")
+			var data [][]string
+			sl := 1
+			for rows.Next() {
+				var n, p, e, r string
+				rows.Scan(&n, &p, &e, &r)
+				
+				// Filtering Logic (Range or Custom)
+				match := false
+				if selection == "" { match = true } else {
+					if strings.Contains(selection, "-") {
+						parts := strings.Split(selection, "-")
+						start, _ := strconv.Atoi(parts[0]); end, _ := strconv.Atoi(parts[1])
+						if sl >= start && sl <= end { match = true }
+					} else {
+						nums := strings.Split(selection, ",")
+						for _, numStr := range nums {
+							num, _ := strconv.Atoi(strings.TrimSpace(numStr))
+							if sl == num { match = true }
+						}
+					}
+				}
+				if match { data = append(data, []string{strconv.Itoa(sl), n, p, e, r}) }
+				sl++
+			}
+
+			if action == "export_excel" {
+				f := excelize.NewFile()
+				f.SetCellValue("Sheet1", "A1", "SL"); f.SetCellValue("Sheet1", "B1", "Name")
+				f.SetCellValue("Sheet1", "C1", "Phone"); f.SetCellValue("Sheet1", "D1", "Email"); f.SetCellValue("Sheet1", "E1", "Remarks")
+				for i, row := range data {
+					f.SetSheetRow("Sheet1", fmt.Sprintf("A%d", i+2), &row)
+				}
+				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("Content-Disposition", "attachment; filename=Customers.xlsx")
+				f.Write(w)
+			} else {
+				pdf := gofpdf.New("L", "mm", "A4", "")
+				pdf.AddPage()
+				pdf.SetFont("Arial", "B", 16)
+				pdf.Cell(280, 10, "B2B Customer Report")
+				pdf.Ln(12); pdf.SetFont("Arial", "B", 12)
+				headers := []string{"SL", "Name", "Phone", "Email", "Remarks"}
+				widths := []float64{15, 60, 45, 70, 80}
+				for i, h := range headers { pdf.CellFormat(widths[i], 10, h, "1", 0, "C", false, 0, "") }
+				pdf.Ln(-1); pdf.SetFont("Arial", "", 11)
+				for _, row := range data {
+					for i, col := range row { pdf.CellFormat(widths[i], 10, col, "1", 0, "L", false, 0, "") }
+					pdf.Ln(-1)
+				}
+				w.Header().Set("Content-Type", "application/pdf")
+				w.Header().Set("Content-Disposition", "attachment; filename=Report.pdf")
+				pdf.Output(w)
+			}
 			return
 		}
 
@@ -80,7 +136,7 @@ func main() {
 		
 		fmt.Fprintf(w, `<html><head><style>
 				body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
-				.box { background: white; padding: 30px; border-radius: 15px; max-width: 1000px; margin: auto; box-shadow: 0 15px 35px rgba(0,0,0,0.15); border: 1px solid #ddd; }
+				.box { background: white; padding: 30px; border-radius: 15px; max-width: 1050px; margin: auto; box-shadow: 0 15px 35px rgba(0,0,0,0.15); border: 1px solid #ddd; }
 				.word-art { background: linear-gradient(45deg, #006400, #1a73e8, #d93025); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; font-weight: 900; font-size: 35px; margin-bottom: 20px; }
 				.export-bar { background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; border: 2px solid #006400; }
 				table { width: 100%%; border-collapse: collapse; }
@@ -92,10 +148,10 @@ func main() {
 				<div style="text-align:right;"><a href="/?action=logout" style="color:red; font-weight:bold; text-decoration:none;">[ Logout ]</a></div>
 				<h1 class="word-art">B2B Customer Pro</h1>
 				<div class="export-bar">
-					<strong>Report:</strong>
-					<input type="text" id="sel" placeholder="Range (3-50) or Custom (3,7,10)" style="flex:1; padding:10px; border:2px solid #ddd; border-radius:5px;">
-					<button onclick="window.location.href='/?action=export_excel&selection='+document.getElementById('sel').value" class="btn" style="background:#2ecc71;">Excel</button>
-					<button onclick="window.location.href='/?action=export_pdf&selection='+document.getElementById('sel').value" class="btn" style="background:#e74c3c;">PDF</button>
+					<strong>Report Selection:</strong>
+					<input type="text" id="sel" placeholder="Ex: 3-50 (Range) or 3,7,10 (Custom)" style="flex:1; padding:10px; border:2px solid #ddd; border-radius:5px;">
+					<button onclick="window.location.href='/?action=export_excel&selection='+document.getElementById('sel').value" class="btn" style="background:#2ecc71;">Excel Download</button>
+					<button onclick="window.location.href='/?action=export_pdf&selection='+document.getElementById('sel').value" class="btn" style="background:#e74c3c;">PDF Download</button>
 				</div>
 				<form method="POST" style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
 					<input type="text" name="customerName" id="n" placeholder="Name" required style="flex:1; padding:12px; border:2px solid #ddd;">
