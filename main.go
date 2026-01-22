@@ -69,6 +69,7 @@ func main() {
 		if action == "delete" { db.Exec("UPDATE customers SET deleted = 1 WHERE id = ?", id); http.Redirect(w, r, "/", http.StatusSeeOther); return }
 		if action == "recover" { db.Exec("UPDATE customers SET deleted = 0 WHERE id = ?", id); http.Redirect(w, r, "/", http.StatusSeeOther); return }
 
+		// Excel & PDF ডাউনলোড অপশন (ফিরে এসেছে)
 		if action == "export_excel" || action == "export_pdf" {
 			rows, _ := db.Query("SELECT name, phone, email, remarks FROM customers WHERE deleted = 0")
 			var data [][]string
@@ -127,30 +128,34 @@ func main() {
 				.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 				.word-art { background: linear-gradient(45deg, #006400, #1a73e8, #d93025); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 35px; font-weight: 900; }
 				.logout-btn { color: #A52A2A; font-size: 22px; font-weight: bold; text-decoration: none; border: 2px solid #A52A2A; padding: 5px 15px; border-radius: 8px; }
-				.status-bar { background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 15px; color: #333; border: 1px solid #c8e6c9; text-align:center; }
+				.status-bar { background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 15px; color: #333; border: 1px solid #c8e6c9; }
+				.package-options { text-align: left; margin-top: 10px; padding-left: 20px; }
 				.export-bar { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; border: 2px solid #006400; }
 				.btn { padding: 10px 15px; border-radius: 6px; border: none; cursor: pointer; color: white; font-weight: bold; }
 				table { width: 100%%; border-collapse: collapse; }
 				th, td { text-align: left; padding: 12px; border-bottom: 2px solid #eee; }
-				th { background: #f8f9fa; }
 			</style></head><body><div class="box">
 				<div class="header">
 					<div class="word-art">B2B Customer Pro</div>
 					<a href="/?action=logout" class="logout-btn">Logout</a>
 				</div>
 				<div class="status-bar">
-					Package: <select style="padding:5px; border-radius:5px; border:1px solid #1a73e8; color:#1a73e8; font-weight:bold;">
-						<option>Basic: $10/mo (50 Customers)</option>
-						<option selected>Standard: $25/mo (250 Customers)</option>
-						<option>Premium: $50/mo (Unlimited)</option>
-					</select> | Status: <span style="color:green;">● Active</span> | 
-					<span id="exp" style="cursor:pointer; color:#d93025; text-decoration:underline;" onclick="this.innerText='Expiry: %s'">Check Expiry</span>
+					<div style="text-align:center; border-bottom:1px solid #c8e6c9; padding-bottom:10px; margin-bottom:10px;">
+						Status: <span style="color:green;">● Active</span> | 
+						<span id="exp" style="cursor:pointer; color:#d93025; text-decoration:underline;" onclick="this.innerText='Expiry: %s'">Check Expiry</span>
+					</div>
+					<div class="package-options">
+						<strong>Available Packages (Monthly):</strong><br>
+						<input type="radio" name="pkg" disabled> Basic: $10/mo (50 Customers)<br>
+						<input type="radio" name="pkg" checked> Standard: $25/mo (250 Customers)<br>
+						<input type="radio" name="pkg" disabled> Premium: $50/mo (Unlimited)
+					</div>
 				</div>
 				<div class="export-bar">
 					<strong>Report:</strong>
 					<input type="text" id="sel" placeholder="Range (3-50) or Custom (3,7,10)" style="flex:1; padding:10px; border:2px solid #ddd; border-radius:5px;">
-					<button onclick="window.location.href='/?action=export_excel&selection='+document.getElementById('sel').value" class="btn" style="background:#2ecc71;">Excel</button>
-					<button onclick="window.location.href='/?action=export_pdf&selection='+document.getElementById('sel').value" class="btn" style="background:#e74c3c;">PDF</button>
+					<button onclick="window.location.href='/?action=export_excel&selection='+document.getElementById('sel').value" class="btn" style="background:#2ecc71;">Excel Download</button>
+					<button onclick="window.location.href='/?action=export_pdf&selection='+document.getElementById('sel').value" class="btn" style="background:#e74c3c;">PDF Download</button>
 				</div>
 				<form method="POST" style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
 					<input type="text" name="customerName" id="n" placeholder="Name" required style="flex:1; padding:12px; border:2px solid #ddd;">
