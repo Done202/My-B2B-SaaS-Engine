@@ -13,43 +13,61 @@ func main() {
 	db.Exec("CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY, name TEXT)")
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// ডাটা সেভ করার লজিক
 		if r.Method == "POST" {
 			name := r.FormValue("customerName")
-			db.Exec("INSERT INTO customers (name) VALUES (?)", name)
+			if name != "" {
+				db.Exec("INSERT INTO customers (name) VALUES (?)", name)
+			}
 		}
 
-		// ড্যাশবোর্ড ইন্টারফেস
-		var customerCount int
-		db.QueryRow("SELECT COUNT(*) FROM customers").Scan(&customerCount)
+		// ডাটাবেজ থেকে কাস্টমার লিস্ট নিয়ে আসা
+		rows, _ := db.Query("SELECT name FROM customers ORDER BY id DESC")
+		defer rows.Close()
+
+		var customerListHTML string
+		var count int
+		for rows.Next() {
+			var name string
+			rows.Scan(&name)
+			customerListHTML += fmt.Sprintf("<li>%s</li>", name)
+			count++
+		}
 
 		fmt.Fprintf(w, `
 			<html>
 				<head>
-					<title>Customer Manager</title>
+					<title>Enterprise CRM</title>
 					<style>
-						body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f3; text-align: center; padding: 40px; }
-						.card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: inline-block; width: 350px; }
-						input { padding: 10px; width: 80%%; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 5px; }
-						button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
-						.counter { font-size: 24px; color: #2ecc71; font-weight: bold; margin-top: 20px; }
+						body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 40px; color: #333; }
+						.container { max-width: 500px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+						h2 { color: #1a73e8; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
+						input { width: 70%%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; }
+						button { background: #1a73e8; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+						.list-section { text-align: left; margin-top: 30px; }
+						ul { list-style: none; padding: 0; }
+						li { background: #f8f9fa; padding: 10px; border-bottom: 1px solid #eee; margin-bottom: 5px; border-radius: 5px; }
+						.stats { font-size: 0.9em; color: #666; margin-top: 10px; }
 					</style>
 				</head>
 				<body>
-					<div class="card">
+					<div class="container">
 						<h2>B2B Customer Manager</h2>
 						<form method="POST">
-							<input type="text" name="customerName" placeholder="Enter Customer Name" required>
-							<button type="submit">Add Customer</button>
+							<input type="text" name="customerName" placeholder="Customer Name" required>
+							<button type="submit">Add</button>
 						</form>
-						<div class="counter">Total Customers: %d</div>
-						<p>Status: <span style="color:green;">Connected to SQLite</span></p>
+						
+						<div class="list-section">
+							<h3>Customer List (%d)</h3>
+							<ul>%s</ul>
+						</div>
+						<p class="stats">Database: <b>SQLite Active</b></p>
 					</div>
 				</body>
 			</html>
-		`, customerCount)
+		`, count, customerListHTML)
 	})
 
-	fmt.Println("Server starting on port 8080...")
+	fmt.Println("Server running on port 8080...")
 	http.ListenAndServe(":8080", nil)
 }
