@@ -11,13 +11,16 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
+// বর্তমানে হার্ডকোড করা অ্যাডমিন (পরবর্তীতে এটি ডাটাবেজ থেকে আসবে)
 const AdminUser = "admin"
 const AdminPass = "12345"
+const AdminEmail = "admin@example.com"
 
 func main() {
 	db, _ := sql.Open("sqlite3", "saas_data.db")
+	// কাস্টমার টেবিল এবং সাবস্ক্রিপশন ইনফো (প্যাকেজ ও স্ট্যাটাস)
 	db.Exec("CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY, name TEXT, phone TEXT, email TEXT, remarks TEXT, deleted INTEGER DEFAULT 0)")
-
+	
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			if r.FormValue("user") == AdminUser && r.FormValue("pass") == AdminPass {
@@ -32,7 +35,31 @@ func main() {
 				<input type="text" name="user" placeholder="Username" style="width:100%%; padding:12px; margin:10px 0; border:2px solid #ddd; border-radius:6px;" required><br>
 				<input type="password" name="pass" placeholder="Password" style="width:100%%; padding:12px; margin:10px 0; border:2px solid #ddd; border-radius:6px;" required><br>
 				<button type="submit" style="width:100%%; padding:12px; background:#1a73e8; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Login</button>
+				<p style="margin-top:15px; font-size:13px;"><a href="/forgot" style="color:#d93025; text-decoration:none;">Forgot Username or Password?</a></p>
 			</form></body></html>`)
+	})
+
+	http.HandleFunc("/forgot", func(w http.ResponseWriter, r *http.Request) {
+		msg := ""
+		if r.Method == "POST" {
+			email := r.FormValue("email")
+			if email == AdminEmail {
+				msg = fmt.Sprintf("<div style='color:green; padding:10px;'>Recovery Sent! <br>Username: <b>%s</b> <br>Password: <b>%s</b></div>", AdminUser, AdminPass)
+			} else {
+				msg = "<div style='color:red;'>Email not found!</div>"
+			}
+		}
+		fmt.Fprintf(w, `<html><body style="font-family:sans-serif; background:#f0f2f5; display:flex; justify-content:center; align-items:center; height:100vh;">
+			<div style="background:white; padding:30px; border-radius:15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width:350px; text-align:center; border: 2px solid #d93025;">
+				<h3 style="color:#d93025;">Account Recovery</h3>
+				%s
+				<form method="POST">
+					<p style="font-size:14px; color:#666;">Enter your registered email to recover account details.</p>
+					<input type="email" name="email" placeholder="Your Email" style="width:100%%; padding:12px; margin:10px 0; border:2px solid #ddd; border-radius:6px;" required><br>
+					<button type="submit" style="width:100%%; padding:12px; background:#d93025; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Recover Now</button>
+				</form>
+				<a href="/login" style="font-size:13px; color:#1a73e8; text-decoration:none;">Back to Login</a>
+			</div></body></html>`, msg)
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +87,6 @@ func main() {
 			return
 		}
 
-		// Excel & PDF Export Logic with Filtering
 		if action == "export_excel" || action == "export_pdf" {
 			rows, _ := db.Query("SELECT name, phone, email, remarks FROM customers WHERE deleted = 0")
 			var data [][]string
@@ -68,8 +94,6 @@ func main() {
 			for rows.Next() {
 				var n, p, e, r string
 				rows.Scan(&n, &p, &e, &r)
-				
-				// Filtering Logic (Range or Custom)
 				match := false
 				if selection == "" { match = true } else {
 					if strings.Contains(selection, "-") {
@@ -87,25 +111,17 @@ func main() {
 				if match { data = append(data, []string{strconv.Itoa(sl), n, p, e, r}) }
 				sl++
 			}
-
 			if action == "export_excel" {
 				f := excelize.NewFile()
-				f.SetCellValue("Sheet1", "A1", "SL"); f.SetCellValue("Sheet1", "B1", "Name")
-				f.SetCellValue("Sheet1", "C1", "Phone"); f.SetCellValue("Sheet1", "D1", "Email"); f.SetCellValue("Sheet1", "E1", "Remarks")
-				for i, row := range data {
-					f.SetSheetRow("Sheet1", fmt.Sprintf("A%d", i+2), &row)
-				}
-				w.Header().Set("Content-Type", "application/octet-stream")
+				f.SetSheetRow("Sheet1", "A1", &[]string{"SL", "Name", "Phone", "Email", "Remarks"})
+				for i, row := range data { f.SetSheetRow("Sheet1", fmt.Sprintf("A%d", i+2), &row) }
 				w.Header().Set("Content-Disposition", "attachment; filename=Customers.xlsx")
 				f.Write(w)
 			} else {
 				pdf := gofpdf.New("L", "mm", "A4", "")
-				pdf.AddPage()
-				pdf.SetFont("Arial", "B", 16)
-				pdf.Cell(280, 10, "B2B Customer Report")
-				pdf.Ln(12); pdf.SetFont("Arial", "B", 12)
-				headers := []string{"SL", "Name", "Phone", "Email", "Remarks"}
-				widths := []float64{15, 60, 45, 70, 80}
+				pdf.AddPage(); pdf.SetFont("Arial", "B", 16); pdf.Cell(280, 10, "B2B Customer Report"); pdf.Ln(12)
+				headers := []string{"SL", "Name", "Phone", "Email", "Remarks"}; widths := []float64{15, 60, 45, 70, 80}
+				pdf.SetFont("Arial", "B", 12)
 				for i, h := range headers { pdf.CellFormat(widths[i], 10, h, "1", 0, "C", false, 0, "") }
 				pdf.Ln(-1); pdf.SetFont("Arial", "", 11)
 				for _, row := range data {
@@ -113,7 +129,6 @@ func main() {
 					pdf.Ln(-1)
 				}
 				w.Header().Set("Content-Type", "application/pdf")
-				w.Header().Set("Content-Disposition", "attachment; filename=Report.pdf")
 				pdf.Output(w)
 			}
 			return
@@ -137,21 +152,24 @@ func main() {
 		fmt.Fprintf(w, `<html><head><style>
 				body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
 				.box { background: white; padding: 30px; border-radius: 15px; max-width: 1050px; margin: auto; box-shadow: 0 15px 35px rgba(0,0,0,0.15); border: 1px solid #ddd; }
-				.word-art { background: linear-gradient(45deg, #006400, #1a73e8, #d93025); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; font-weight: 900; font-size: 35px; margin-bottom: 20px; }
+				.word-art { background: linear-gradient(45deg, #006400, #1a73e8, #d93025); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; font-weight: 900; font-size: 35px; margin-bottom: 5px; }
+				.status-bar { text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 14px; color: #555; }
 				.export-bar { background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; border: 2px solid #006400; }
+				.btn { padding: 10px 15px; border-radius: 6px; border: none; cursor: pointer; color: white; font-weight: bold; }
 				table { width: 100%%; border-collapse: collapse; }
 				th, td { text-align: left; padding: 12px; border-bottom: 2px solid #eee; }
-				th { background: #f8f9fa; color: #333; font-weight: bold; }
-				.btn { padding: 10px 15px; border-radius: 6px; border: none; cursor: pointer; color: white; font-weight: bold; }
-				.recover-section { margin-top: 40px; border-top: 3px solid #d93025; padding-top: 15px; }
+				th { background: #f8f9fa; }
 			</style></head><body><div class="box">
 				<div style="text-align:right;"><a href="/?action=logout" style="color:red; font-weight:bold; text-decoration:none;">[ Logout ]</a></div>
 				<h1 class="word-art">B2B Customer Pro</h1>
+				<div class="status-bar">
+					Package: <span style="color:#1a73e8;">Premium (Unlimited)</span> | Status: <span style="color:green;">● Active</span> | Expiry: <span style="color:#d93025;">Jan 23, 2027</span>
+				</div>
 				<div class="export-bar">
-					<strong>Report Selection:</strong>
-					<input type="text" id="sel" placeholder="Ex: 3-50 (Range) or 3,7,10 (Custom)" style="flex:1; padding:10px; border:2px solid #ddd; border-radius:5px;">
-					<button onclick="window.location.href='/?action=export_excel&selection='+document.getElementById('sel').value" class="btn" style="background:#2ecc71;">Excel Download</button>
-					<button onclick="window.location.href='/?action=export_pdf&selection='+document.getElementById('sel').value" class="btn" style="background:#e74c3c;">PDF Download</button>
+					<strong>Report:</strong>
+					<input type="text" id="sel" placeholder="Range (3-50) or Custom (3,7,10)" style="flex:1; padding:10px; border:2px solid #ddd; border-radius:5px;">
+					<button onclick="window.location.href='/?action=export_excel&selection='+document.getElementById('sel').value" class="btn" style="background:#2ecc71;">Excel</button>
+					<button onclick="window.location.href='/?action=export_pdf&selection='+document.getElementById('sel').value" class="btn" style="background:#e74c3c;">PDF</button>
 				</div>
 				<form method="POST" style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
 					<input type="text" name="customerName" id="n" placeholder="Name" required style="flex:1; padding:12px; border:2px solid #ddd;">
@@ -172,8 +190,8 @@ func main() {
 			sl++
 		}
 		fmt.Fprintf(w, `</table>
-				<div class="recover-section">
-					<h3 style="color:#d93025;">Recycle Bin (Recovery)</h3>`)
+				<div style="margin-top:30px; border-top:2px solid #d93025; padding-top:10px;">
+					<h3 style="color:#d93025;">Recycle Bin</h3>`)
 		for deletedRows.Next() {
 			var mid int; var name, phone string
 			deletedRows.Scan(&mid, &name, &phone)
