@@ -10,11 +10,30 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xuri/excelize/v2"
 	"github.com/jung-kurt/gofpdf"
+	"net/smtp" // ইমেইল পাঠানোর জন্য
 )
 
 const AdminUser = "admin"
 const AdminPass = "12345"
 const AdminEmail = "admin@example.com"
+
+// ইমেইল কনফিগারেশন (আপনার ইমেইল ও অ্যাপ পাসওয়ার্ড এখানে দিবেন)
+const senderEmail = "your-email@gmail.com"
+const senderPass = "your-app-password"
+
+func sendWelcomeEmail(to string, name string) {
+	auth := smtp.PlainAuth("", senderEmail, senderPass, "smtp.gmail.com")
+	msg := []byte("Subject: Welcome to B2B Customer Pro\r\n" +
+		"\r\n" +
+		"Hi " + name + ",\r\nWelcome to our community. We have successfully registered your details.")
+	smtp.SendMail("smtp.gmail.com:587", auth, senderEmail, []string{to}, msg)
+}
+
+func sendSMS(phone string, name string) {
+	// এখানে আপনার SMS Gateway API কল করবেন। উদাহরণস্বরূপ:
+	// http.Get("https://api.sms-provider.com/send?to=" + phone + "&msg=Welcome " + name)
+	fmt.Println("SMS Sent to:", phone)
+}
 
 func main() {
 	db, _ := sql.Open("sqlite3", "saas_data.db")
@@ -69,7 +88,6 @@ func main() {
 		if action == "delete" { db.Exec("UPDATE customers SET deleted = 1 WHERE id = ?", id); http.Redirect(w, r, "/", http.StatusSeeOther); return }
 		if action == "recover" { db.Exec("UPDATE customers SET deleted = 0 WHERE id = ?", id); http.Redirect(w, r, "/", http.StatusSeeOther); return }
 
-		// Excel & PDF ডাউনলোড অপশন (ফিরে এসেছে)
 		if action == "export_excel" || action == "export_pdf" {
 			rows, _ := db.Query("SELECT name, phone, email, remarks FROM customers WHERE deleted = 0")
 			var data [][]string
@@ -114,7 +132,12 @@ func main() {
 			name, phone, email, remarks := r.FormValue("customerName"), r.FormValue("customerPhone"), r.FormValue("customerEmail"), r.FormValue("customerRemarks")
 			editID := r.FormValue("editID")
 			if editID != "" { db.Exec("UPDATE customers SET name=?, phone=?, email=?, remarks=? WHERE id=?", name, phone, email, remarks, editID)
-			} else if name != "" { db.Exec("INSERT INTO customers (name, phone, email, remarks) VALUES (?, ?, ?, ?)", name, phone, email, remarks) }
+			} else if name != "" { 
+				db.Exec("INSERT INTO customers (name, phone, email, remarks) VALUES (?, ?, ?, ?)", name, phone, email, remarks)
+				// অটোমেটিক ইমেইল এবং SMS ফিচার
+				go sendWelcomeEmail(email, name)
+				go sendSMS(phone, name)
+			}
 			http.Redirect(w, r, "/", http.StatusSeeOther); return
 		}
 
@@ -125,9 +148,10 @@ func main() {
 		fmt.Fprintf(w, `<html><head><style>
 				body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
 				.box { background: white; padding: 30px; border-radius: 15px; max-width: 1050px; margin: auto; box-shadow: 0 15px 35px rgba(0,0,0,0.15); border: 1px solid #ddd; }
-				.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+				.header { position: relative; text-align: center; margin-bottom: 20px; }
 				.word-art { background: linear-gradient(45deg, #006400, #1a73e8, #d93025); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 35px; font-weight: 900; }
-				.logout-btn { color: #A52A2A; font-size: 22px; font-weight: bold; text-decoration: none; border: 2px solid #A52A2A; padding: 5px 15px; border-radius: 8px; }
+				.logout-container { position: absolute; right: 0; top: 50%%; transform: translateY(-50%%); }
+				.logout-btn { color: #A52A2A; font-size: 20px; font-weight: bold; text-decoration: none; border: 2px solid #A52A2A; padding: 5px 12px; border-radius: 8px; }
 				.status-bar { background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 15px; color: #333; border: 1px solid #c8e6c9; }
 				.package-options { text-align: left; margin-top: 10px; padding-left: 20px; }
 				.export-bar { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; border: 2px solid #006400; }
@@ -137,7 +161,7 @@ func main() {
 			</style></head><body><div class="box">
 				<div class="header">
 					<div class="word-art">B2B Customer Pro</div>
-					<a href="/?action=logout" class="logout-btn">Logout</a>
+					<div class="logout-container"><a href="/?action=logout" class="logout-btn">Logout</a></div>
 				</div>
 				<div class="status-bar">
 					<div style="text-align:center; border-bottom:1px solid #c8e6c9; padding-bottom:10px; margin-bottom:10px;">
