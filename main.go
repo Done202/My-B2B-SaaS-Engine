@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"net/smtp"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/xuri/excelize/v2"
@@ -21,7 +22,6 @@ const (
 	senderPass  = "your-app-password"
 )
 
-// ---------------- EMAIL ----------------
 func sendWelcomeEmail(to, name string) {
 	if to == "" { return }
 	auth := smtp.PlainAuth("", senderEmail, senderPass, "smtp.gmail.com")
@@ -33,7 +33,6 @@ func main() {
 	db, _ := sql.Open("sqlite3", "saas_data.db")
 	db.Exec(`CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, phone TEXT, email TEXT, remarks TEXT, deleted INTEGER DEFAULT 0)`)
 
-	// ---------------- LOGIN (Recovery সহ) ----------------
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			if r.FormValue("user") == AdminUser && r.FormValue("pass") == AdminPass {
@@ -43,10 +42,10 @@ func main() {
 		}
 		fmt.Fprint(w, `<html><body style="font-family:sans-serif; background:#f0f2f5; display:flex; justify-content:center; align-items:center; height:100vh;">
 			<form method="POST" style="background:white; padding:40px; border-radius:15px; width:320px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.1);">
-				<h2 style="color:#1a73e8;">Admin Login</h2>
-				<input name="user" placeholder="User" style="width:100%; padding:10px; margin:10px 0;"><br>
-				<input type="password" name="pass" placeholder="Pass" style="width:100%; padding:10px; margin:10px 0;"><br>
-				<button style="width:100%; padding:10px; background:#1a73e8; color:white; border:none; border-radius:5px;">Login</button>
+				<h2>Admin Login</h2>
+				<input name="user" placeholder="User" style="width:100%; padding:10px; margin:10px 0;">
+				<input type="password" name="pass" placeholder="Pass" style="width:100%; padding:10px; margin:10px 0;">
+				<button style="width:100%; padding:10px; background:#1a73e8; color:white; border:none; border-radius:5px; cursor:pointer;">Login</button>
 				<p style="margin-top:15px; font-size:13px;"><a href="/forgot" style="color:#d93025; text-decoration:none;">Forgot Username or Password?</a></p>
 			</form></body></html>`)
 	})
@@ -54,18 +53,17 @@ func main() {
 	http.HandleFunc("/forgot", func(w http.ResponseWriter, r *http.Request) {
 		msg := ""
 		if r.Method == "POST" && r.FormValue("email") == AdminEmail {
-			msg = fmt.Sprintf("<div style='color:green;'>User: %s | Pass: %s</div>", AdminUser, AdminPass)
+			msg = fmt.Sprintf("<div style='color:green; margin-bottom:10px;'>User: %s | Pass: %s</div>", AdminUser, AdminPass)
 		}
 		fmt.Fprintf(w, `<html><body style="font-family:sans-serif; background:#f0f2f5; display:flex; justify-content:center; align-items:center; height:100vh;">
-			<div style="background:white; padding:30px; border-radius:15px; text-align:center;">
+			<div style="background:white; padding:30px; border-radius:15px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.1);">
 				<h3>Recovery</h3>%s
-				<form method="POST"><input name="email" placeholder="Admin Email" style="padding:10px; margin:10px 0;"><br>
-				<button style="background:#d93025; color:white; border:none; padding:10px;">Recover</button></form>
-				<a href="/login">Back</a>
+				<form method="POST"><input name="email" placeholder="Admin Email" style="padding:10px; margin:10px 0; width:100%%;"><br>
+				<button style="background:#d93025; color:white; border:none; padding:10px; width:100%%; cursor:pointer;">Recover</button></form>
+				<a href="/login" style="font-size:13px; color:#1a73e8;">Back to Login</a>
 			</div></body></html>`, msg)
 	})
 
-	// ---------------- ROOT (Main Engine) ----------------
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		c, _ := r.Cookie("session")
 		if c == nil || c.Value != "active" { http.Redirect(w, r, "/login", http.StatusSeeOther); return }
@@ -76,20 +74,19 @@ func main() {
 		if action == "delete" { db.Exec("UPDATE customers SET deleted=1 WHERE id=?", id); http.Redirect(w, r, "/", http.StatusSeeOther); return }
 		if action == "recover" { db.Exec("UPDATE customers SET deleted=0 WHERE id=?", id); http.Redirect(w, r, "/", http.StatusSeeOther); return }
 
-		// ---------------- EDIT ----------------
 		if action == "edit" {
 			var n, p, e, rmk string
 			db.QueryRow("SELECT name,phone,email,remarks FROM customers WHERE id=?", id).Scan(&n, &p, &e, &rmk)
 			fmt.Fprintf(w, `<html><body style="font-family:sans-serif; background:#f0f2f5; padding:40px;">
-				<div style="background:white; padding:30px; border-radius:15px; max-width:500px; margin:auto;">
+				<div style="background:white; padding:30px; border-radius:15px; max-width:500px; margin:auto; box-shadow:0 10px 20px rgba(0,0,0,0.1);">
 					<h2>Edit Customer</h2>
 					<form method="POST" action="/?action=update&id=%s">
-						<input name="customerName" value="%s" style="width:100%%; padding:10px; margin:5px 0;"><br>
-						<input name="customerPhone" value="%s" style="width:100%%; padding:10px; margin:5px 0;"><br>
-						<input name="customerEmail" value="%s" style="width:100%%; padding:10px; margin:5px 0;"><br>
-						<input name="customerRemarks" value="%s" style="width:100%%; padding:10px; margin:5px 0;"><br>
-						<button style="background:#1a73e8; color:white; padding:10px; border:none; border-radius:5px;">Update</button>
-						<a href="/" style="margin-left:10px;">Cancel</a>
+						<input name="customerName" value="%s" style="width:100%%; padding:10px; margin:5px 0;">
+						<input name="customerPhone" value="%s" style="width:100%%; padding:10px; margin:5px 0;">
+						<input name="customerEmail" value="%s" style="width:100%%; padding:10px; margin:5px 0;">
+						<input name="customerRemarks" value="%s" style="width:100%%; padding:10px; margin:5px 0;">
+						<button style="background:#1a73e8; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;">Update Data</button>
+						<a href="/" style="margin-left:15px; color:#666;">Cancel</a>
 					</form></div></body></html>`, id, n, p, e, rmk)
 			return
 		}
@@ -99,7 +96,6 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther); return
 		}
 
-		// ---------------- EXPORT ----------------
 		if action == "export_excel" || action == "export_pdf" {
 			rows, _ := db.Query("SELECT name,phone,email,remarks FROM customers WHERE deleted=0")
 			var data [][]string
@@ -122,9 +118,10 @@ func main() {
 				w.Header().Set("Content-Disposition", "attachment; filename=report.xlsx"); f.Write(w)
 			} else {
 				pdf := gofpdf.New("L", "mm", "A4", ""); pdf.AddPage(); pdf.SetFont("Arial", "B", 12)
+				pdf.Cell(280, 10, "Customer Report"); pdf.Ln(10)
 				for _, rd := range data {
-					for _, col := range rd { pdf.Cell(40, 10, col) }
-					pdf.Ln(10)
+					for _, col := range rd { pdf.CellFormat(50, 10, col, "1", 0, "L", false, 0, "") }
+					pdf.Ln(-1)
 				}
 				w.Header().Set("Content-Type", "application/pdf"); pdf.Output(w)
 			}
@@ -140,13 +137,15 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther); return
 		}
 
-		// ---------------- UI LIST ----------------
+		expiryDate := time.Now().AddDate(0, 0, 30).Format("02 Jan, 2026")
 		fmt.Fprintf(w, `<html><head><style>
 			body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
 			.box { background: white; padding: 30px; border-radius: 15px; max-width: 1000px; margin: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
 			.header { position: relative; text-align: center; margin-bottom: 25px; }
-			.word-art { font-size: 30px; font-weight: bold; color: #1a73e8; }
-			.logout-btn { position: absolute; right: 0; top: 0; color: #d93025; border: 1px solid #d93025; padding: 5px 15px; border-radius: 5px; text-decoration: none; }
+			.word-art { font-size: 32px; font-weight: bold; color: #1a73e8; }
+			.logout-btn { position: absolute; right: 0; top: 0; color: #A52A2A; border: 2px solid #A52A2A; padding: 5px 15px; border-radius: 8px; text-decoration: none; font-weight: bold; }
+			.status-bar { background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #c8e6c9; }
+			.report-bar { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; border: 1px solid #ddd; }
 			#searchInp { width: 100%%; padding: 12px; border: 2px solid #1a73e8; border-radius: 8px; margin-bottom: 20px; }
 			table { width: 100%%; border-collapse: collapse; }
 			th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
@@ -156,18 +155,35 @@ func main() {
 				<a href="/?action=logout" class="logout-btn">Logout</a>
 			</div>
 			
+			<div class="status-bar">
+				<div style="text-align:center;">Status: <span style="color:green;">● Active</span> | <span onclick="this.innerText='Expiry: %s'" style="cursor:pointer; color:red; text-decoration:underline;">Check Expiry</span></div>
+				<div style="margin-top:10px;">
+					<strong>Available Packages:</strong><br>
+					<input type="radio" disabled> Basic: $10/mo (50 Customers)<br>
+					<input type="radio" checked> Standard: $25/mo (250 Customers)<br>
+					<input type="radio" disabled> Premium: $50/mo (Unlimited)
+				</div>
+			</div>
+
 			<input type="text" id="searchInp" onkeyup="searchTable()" placeholder="Search by Name, Phone or Email...">
+
+			<div class="report-bar">
+				<strong>Report:</strong>
+				<input type="text" id="sel" placeholder="Range (1-10) or Custom (1,3)" style="flex:1; padding:10px; border-radius:5px; border:1px solid #ccc;">
+				<button onclick="window.location.href='/?action=export_excel&selection='+document.getElementById('sel').value" style="background:#2ecc71; color:white; padding:10px 15px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">Excel Download</button>
+				<button onclick="window.location.href='/?action=export_pdf&selection='+document.getElementById('sel').value" style="background:#e74c3c; color:white; padding:10px 15px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">PDF Download</button>
+			</div>
 
 			<form method="POST" style="display:flex; gap:10px; margin-bottom:20px;">
 				<input name="customerName" placeholder="Name" required style="flex:1; padding:10px;">
 				<input name="customerPhone" placeholder="Phone" style="flex:1; padding:10px;">
 				<input name="customerEmail" placeholder="Email" style="flex:1; padding:10px;">
 				<input name="customerRemarks" placeholder="Remarks" style="flex:1; padding:10px;">
-				<button style="background:#1a73e8; color:white; border:none; padding:10px 20px; border-radius:5px;">Add</button>
+				<button style="background:#1a73e8; color:white; border:none; padding:10px 20px; border-radius:5px; font-weight:bold; cursor:pointer;">Save Customer</button>
 			</form>
 
 			<table id="custTable">
-			<tr style="background:#f8f9fa;"><th>SL</th><th>Name</th><th>Phone</th><th>Email</th><th>Remarks</th><th>Actions</th></tr>`)
+			<tr style="background:#f8f9fa;"><th>SL</th><th>Name</th><th>Phone</th><th>Email</th><th>Remarks</th><th>Actions</th></tr>`, expiryDate)
 		
 		rows, _ := db.Query("SELECT id,name,phone,email,remarks FROM customers WHERE deleted=0")
 		sl := 1
@@ -175,11 +191,21 @@ func main() {
 			var id int; var n, p, e, r string
 			rows.Scan(&id, &n, &p, &e, &r)
 			fmt.Fprintf(w, `<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
-				<td><a href="/?action=edit&id=%d" style="color:#1a73e8; text-decoration:none;">Edit</a> | 
-				<a href="/?action=delete&id=%d" style="color:#d93025; text-decoration:none;">Delete</a></td></tr>`, sl, n, p, e, r, id, id)
+				<td><a href="/?action=edit&id=%d" style="color:#1a73e8; font-weight:bold; text-decoration:none;">Edit</a> | 
+				<a href="/?action=delete&id=%d" style="color:#d93025; font-weight:bold; text-decoration:none;">Delete</a></td></tr>`, sl, n, p, e, r, id, id)
 			sl++
 		}
-		fmt.Fprint(w, `</table></div>
+		fmt.Fprint(w, `</table>
+			<div style="margin-top:30px; border-top: 1px solid #ddd; padding-top:10px;">
+				<h3 style="color:#d93025;">Recycle Bin</h3>`)
+		
+		delRows, _ := db.Query("SELECT id,name,phone FROM customers WHERE deleted=1")
+		for delRows.Next() {
+			var did int; var dn, dp string
+			delRows.Scan(&did, &dn, &dp)
+			fmt.Fprintf(w, `<div style="margin-bottom:8px;"><s>%s (%s)</s> <a href="/?action=recover&id=%d" style="color:green; font-weight:bold; margin-left:10px; text-decoration:none;">[ Recover ]</a></div>`, dn, dp, did)
+		}
+		fmt.Fprint(w, `</div></div>
 			<script>
 			function searchTable() {
 				var input, filter, table, tr, td, i, j, txt;
